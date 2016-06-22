@@ -237,6 +237,12 @@ read_messages()
 	bool success;               // receive success flag
 	bool received_all = false;  // receive only one message
 	Time_Stamps this_timestamps;
+	FILE *fd;
+	fd = fopen("/Users/mac/Desktop/test.txt","w+");
+	if (fd == NULL) {
+		printf("open file failed!");
+	}
+//	fprintf(fd,"   xacc	    yacc	zacc	 xgyro  ygyro	  zgyro	    xmag	   ymag	  zmag	altitude	temperature\n");
 
 	// Blocking wait for new data
 	while ( !received_all and !time_to_exit )
@@ -246,7 +252,7 @@ read_messages()
 		// ----------------------------------------------------------------------
 		mavlink_message_t message;
 		success = serial_port->read_message(message);
-
+		printf("messageid = %d\n", message.msgid);
 		// ----------------------------------------------------------------------
 		//   HANDLE MESSAGE
 		// ----------------------------------------------------------------------
@@ -338,6 +344,11 @@ read_messages()
 				{
 					//printf("MAVLINK_MSG_ID_HIGHRES_IMU\n");
 					mavlink_msg_highres_imu_decode(&message, &(current_messages.highres_imu));
+					fprintf(fd,"acc: %f %f %f ",current_messages.highres_imu.xacc,current_messages.highres_imu.yacc,current_messages.highres_imu.zacc);
+					fprintf(fd,"gyro: %f %f	%f ",current_messages.highres_imu.xgyro,current_messages.highres_imu.ygyro,current_messages.highres_imu.zgyro);
+					fprintf(fd,"mag: %f %f %f ",current_messages.highres_imu.xmag,current_messages.highres_imu.ymag,current_messages.highres_imu.zmag);
+					fprintf(fd,"alt: %f %f\n",current_messages.highres_imu.pressure_alt,current_messages.highres_imu.temperature);
+
 					current_messages.time_stamps.highres_imu = get_time_usec();
 					this_timestamps.highres_imu = current_messages.time_stamps.highres_imu;
 					break;
@@ -372,7 +383,7 @@ read_messages()
 //				this_timestamps.global_position_int        &&
 //				this_timestamps.position_target_local_ned  &&
 //				this_timestamps.position_target_global_int &&
-//				this_timestamps.highres_imu                &&
+  				this_timestamps.highres_imu                &&
 //				this_timestamps.attitude                   &&
 				this_timestamps.sys_status
 				;
@@ -383,7 +394,7 @@ read_messages()
 		}
 
 	} // end: while not received all
-
+fclose(fd);
 	return;
 }
 
@@ -864,6 +875,3 @@ start_autopilot_interface_write_thread(void *args)
 	// done!
 	return NULL;
 }
-
-
-
