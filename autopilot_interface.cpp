@@ -232,16 +232,12 @@ update_setpoint(mavlink_set_position_target_local_ned_t setpoint)
 // ------------------------------------------------------------------------------
 void
 Autopilot_Interface::
-read_messages()
+read_messages(FILE *fd)
 {
 	bool success;               // receive success flag
 	bool received_all = false;  // receive only one message
 	Time_Stamps this_timestamps;
-	FILE *fd;
-	fd = fopen("/Users/mac/Desktop/test.txt","w+");
-	if (fd == NULL) {
-		printf("open file failed!");
-	}
+
 //	fprintf(fd,"   xacc	    yacc	zacc	 xgyro  ygyro	  zgyro	    xmag	   ymag	  zmag	altitude	temperature\n");
 
 	// Blocking wait for new data
@@ -335,6 +331,7 @@ read_messages()
 				{
 					//printf("MAVLINK_MSG_ID_POSITION_TARGET_GLOBAL_INT\n");
 					mavlink_msg_position_target_global_int_decode(&message, &(current_messages.position_target_global_int));
+					fprintf(fd, "lat_int = %d\n", current_messages.position_target_global_int.lat_int);
 					current_messages.time_stamps.position_target_global_int = get_time_usec();
 					this_timestamps.position_target_global_int = current_messages.time_stamps.position_target_global_int;
 					break;
@@ -356,8 +353,8 @@ read_messages()
 				case MAVLINK_MSG_ID_GPS_RAW_INT:
 				{
 					mavlink_msg_gps_raw_int_decode(&message, &(current_messages.gps_raw_int));
-					fprintf(fd, "lat = %d	lon = %d	 alt = %d\n", current_messages.gps_raw_int.lat,current_messages.gps_raw_int.lon,current_messages.gps_raw_int.alt);
-					fprintf(fd, "vel = %d	cog = %d	 satellites_visible = %d\n", current_messages.gps_raw_int.vel,current_messages.gps_raw_int.cog,current_messages.gps_raw_int.satellites_visible);
+					// fprintf(fd, "lat = %d	lon = %d	 alt = %d		", current_messages.gps_raw_int.lat,current_messages.gps_raw_int.lon,current_messages.gps_raw_int.alt);
+					// fprintf(fd, "vel = %d	cog = %d	 satellites_visible = %d\n", current_messages.gps_raw_int.vel,current_messages.gps_raw_int.cog,current_messages.gps_raw_int.satellites_visible);
 					break;
 				}
 
@@ -390,7 +387,7 @@ read_messages()
 //				this_timestamps.global_position_int        &&
 //				this_timestamps.position_target_local_ned  &&
 //				this_timestamps.position_target_global_int &&
-  				this_timestamps.highres_imu                &&
+//  				this_timestamps.highres_imu                &&
 //				this_timestamps.attitude                   &&
 				this_timestamps.sys_status
 				;
@@ -401,7 +398,7 @@ read_messages()
 		}
 
 	} // end: while not received all
-fclose(fd);
+
 	return;
 }
 
@@ -461,6 +458,47 @@ write_setpoint()
 	// check the write
 	if ( len <= 0 )
 		fprintf(stderr,"WARNING: could not send POSITION_TARGET_LOCAL_NED \n");
+	//	else
+	//		printf("%lu POSITION_TARGET  = [ %f , %f , %f ] \n", write_count, position_target.x, position_target.y, position_target.z);
+
+	return;
+}
+void
+Autopilot_Interface::
+write_setpoint_global()
+{
+	// --------------------------------------------------------------------------
+	//   PACK PAYLOAD
+	// --------------------------------------------------------------------------
+
+	// pull from position target
+	mavlink_set_position_target_global_int_t sp = current_setpoint_global;
+
+	// double check some system parameters
+	if ( not sp.time_boot_ms )
+		sp.time_boot_ms = (uint32_t) (get_time_usec()/1000);
+	sp.target_system    = system_id;
+	sp.target_component = autopilot_id;
+
+
+	// --------------------------------------------------------------------------
+	//   ENCODE
+	// --------------------------------------------------------------------------
+
+	mavlink_message_t message;
+	mavlink_msg_set_position_target_global_int_encode(system_id, companion_id, &message, &sp);
+
+
+	// --------------------------------------------------------------------------
+	//   WRITE
+	// --------------------------------------------------------------------------
+
+	// do the write
+	int len = write_message(message);
+
+	// check the write
+	if ( len <= 0 )
+		fprintf(stderr,"WARNING: could not send POSITION_TARGET_GLOBLE_INT \n");
 	//	else
 	//		printf("%lu POSITION_TARGET  = [ %f , %f , %f ] \n", write_count, position_target.x, position_target.y, position_target.z);
 
@@ -758,7 +796,8 @@ start_write_thread(void)
 
 	else
 	{
-		write_thread();
+		// write_thread();
+		write_thread_global();
 		return;
 	}
 
@@ -795,15 +834,19 @@ Autopilot_Interface::
 read_thread()
 {
 	reading_status = true;
-
+	FILE *fd;
+	fd = fopen("/Users/mac/Desktop/test.txt","w+");
+	if(fd == NULL){
+		printf("open file failed!\n");
+	}
 	while ( ! time_to_exit )
 	{
-		read_messages();
+		read_messages(fd);
 		usleep(100000); // Read batches at 10Hz
 	}
 
 	reading_status = false;
-
+	fclose(fd);
 	return;
 }
 
@@ -841,6 +884,48 @@ write_thread(void)
 	{
 		usleep(250000);   // Stream at 4Hz
 		write_setpoint();
+	}
+
+	// signal end
+	writing_status = false;
+
+	return;
+
+}
+void
+Autopilot_Interface::
+write_thread_global(void)
+{
+	// signal startup
+	writing_status = 2;
+
+	// prepare an initial setpoint, just stay put
+	mavlink_set_position_target_global_int_t sp;
+	sp.type_mask = MAVLINK_MSG_SET_POSITION_TARGET_LOCAL_NED_VELOCITY &
+				   MAVLINK_MSG_SET_POSITION_TARGET_LOCAL_NED_YAW_RATE &
+					 MAVLINK_MSG_SET_POSITION_TARGET_LOCAL_NED_POSITION;
+	sp.coordinate_frame =  MAV_FRAME_GLOBAL_INT;
+	sp.lat_int  = 39*pow(10,7);
+	sp.lon_int  = 116*pow(10,7);
+	sp.alt      = 20;
+	sp.vx       = 1.0;
+	sp.vy       = 1.0;
+	sp.vz       = 0.0;
+	sp.yaw_rate = 0.0;
+
+	// set position target
+	current_setpoint_global = sp;
+
+	// write a message and signal writing
+	write_setpoint_global();
+	writing_status = true;
+
+	// Pixhawk needs to see off-board commands at minimum 2Hz,
+	// otherwise it will go into fail safe
+	while ( !time_to_exit )
+	{
+		usleep(250000);   // Stream at 4Hz
+		write_setpoint_global();
 	}
 
 	// signal end

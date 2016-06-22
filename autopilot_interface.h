@@ -259,7 +259,7 @@ public:
 	mavlink_set_position_target_local_ned_t initial_position;
 
 	void update_setpoint(mavlink_set_position_target_local_ned_t setpoint);
-	void read_messages();
+	void read_messages(FILE *fd);
 	int  write_message(mavlink_message_t message);
 
 	void enable_offboard_control();
@@ -284,12 +284,15 @@ private:
 	pthread_t write_tid;
 
 	mavlink_set_position_target_local_ned_t current_setpoint;
+	mavlink_set_position_target_global_int_t current_setpoint_global;
 
 	void read_thread();
 	void write_thread(void);
+	void write_thread_global(void);
 
 	int toggle_offboard_control( bool flag );
 	void write_setpoint();
+	void write_setpoint_global();
 
 };
 
