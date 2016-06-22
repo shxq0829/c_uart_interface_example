@@ -205,6 +205,7 @@ struct Mavlink_Messages {
 	mavlink_attitude_t attitude;
 
 	// System Parameters?
+	mavlink_gps_raw_int_t gps_raw_int;
 
 
 	// Time Stamps
@@ -295,5 +296,3 @@ private:
 
 
 #endif // AUTOPILOT_INTERFACE_H_
-
-

@@ -344,13 +344,20 @@ read_messages()
 				{
 					//printf("MAVLINK_MSG_ID_HIGHRES_IMU\n");
 					mavlink_msg_highres_imu_decode(&message, &(current_messages.highres_imu));
-					fprintf(fd,"acc: %f %f %f ",current_messages.highres_imu.xacc,current_messages.highres_imu.yacc,current_messages.highres_imu.zacc);
-					fprintf(fd,"gyro: %f %f	%f ",current_messages.highres_imu.xgyro,current_messages.highres_imu.ygyro,current_messages.highres_imu.zgyro);
-					fprintf(fd,"mag: %f %f %f ",current_messages.highres_imu.xmag,current_messages.highres_imu.ymag,current_messages.highres_imu.zmag);
-					fprintf(fd,"alt: %f %f\n",current_messages.highres_imu.pressure_alt,current_messages.highres_imu.temperature);
+					// fprintf(fd,"acc: %f %f %f ",current_messages.highres_imu.xacc,current_messages.highres_imu.yacc,current_messages.highres_imu.zacc);
+					// fprintf(fd,"gyro: %f %f	%f ",current_messages.highres_imu.xgyro,current_messages.highres_imu.ygyro,current_messages.highres_imu.zgyro);
+					// fprintf(fd,"mag: %f %f %f ",current_messages.highres_imu.xmag,current_messages.highres_imu.ymag,current_messages.highres_imu.zmag);
+					// fprintf(fd,"alt: %f %f\n",current_messages.highres_imu.pressure_alt,current_messages.highres_imu.temperature);
 
 					current_messages.time_stamps.highres_imu = get_time_usec();
 					this_timestamps.highres_imu = current_messages.time_stamps.highres_imu;
+					break;
+				}
+				case MAVLINK_MSG_ID_GPS_RAW_INT:
+				{
+					mavlink_msg_gps_raw_int_decode(&message, &(current_messages.gps_raw_int));
+					fprintf(fd, "lat = %d	lon = %d	 alt = %d\n", current_messages.gps_raw_int.lat,current_messages.gps_raw_int.lon,current_messages.gps_raw_int.alt);
+					fprintf(fd, "vel = %d	cog = %d	 satellites_visible = %d\n", current_messages.gps_raw_int.vel,current_messages.gps_raw_int.cog,current_messages.gps_raw_int.satellites_visible);
 					break;
 				}
 
