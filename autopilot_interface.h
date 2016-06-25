@@ -62,6 +62,7 @@
 #include <sys/time.h>
 
 #include <common/mavlink.h>
+#include <termios.h>
 
 // ------------------------------------------------------------------------------
 //   Defines
@@ -125,7 +126,14 @@ void set_yaw_rate(float yaw_rate, mavlink_set_position_target_local_ned_t &sp);
 
 void* start_autopilot_interface_read_thread(void *args);
 void* start_autopilot_interface_write_thread(void *args);
+void* start_autopilot_interface_listen_thread(void *args);
 
+void init_keyboard(void);
+void close_keyboard(void);
+int kbhit(void);
+int readch(void);
+static struct termios initial_settings, new_settings;
+static int peek_character = -1;
 
 // ------------------------------------------------------------------------------
 //   Data Structures
@@ -248,8 +256,11 @@ public:
 
 	char reading_status;
 	char writing_status;
+	char listening_status;
 	char control_status;
     uint64_t write_count;
+		char receive_flag;
+		int receive_ch;
 
     int system_id;
 	int autopilot_id;
@@ -270,6 +281,7 @@ public:
 
 	void start_read_thread();
 	void start_write_thread(void);
+	void start_listen_thread();
 
 	void handle_quit( int sig );
 
@@ -282,12 +294,14 @@ private:
 
 	pthread_t read_tid;
 	pthread_t write_tid;
+	pthread_t listen_tid;
 
 	mavlink_set_position_target_local_ned_t current_setpoint;
 	mavlink_set_position_target_global_int_t current_setpoint_global;
 
 	void read_thread();
 	void write_thread(void);
+	void listen_thread();
 	void write_thread_global(void);
 
 	int toggle_offboard_control( bool flag );

@@ -66,6 +66,58 @@ get_time_usec()
 	return _time_stamp.tv_sec*1000000 + _time_stamp.tv_usec;
 }
 
+// ----------------------------------------------------------------------------------
+//   listen KEYBOARD Helper Functions
+// ----------------------------------------------------------------------------------
+void init_keyboard()
+{
+    tcgetattr(0,&initial_settings);
+    new_settings = initial_settings;
+    new_settings.c_lflag |= ICANON;
+    new_settings.c_lflag |= ECHO;
+    new_settings.c_lflag |= ISIG;
+    new_settings.c_cc[VMIN] = 1;
+    new_settings.c_cc[VTIME] = 0;
+    tcsetattr(0, TCSANOW, &new_settings);
+}
+
+void close_keyboard()
+{
+    tcsetattr(0, TCSANOW, &initial_settings);
+}
+
+int kbhit()
+{
+    unsigned char ch;
+    int nread;
+
+    if (peek_character != -1) return 1;
+    new_settings.c_cc[VMIN]=0;
+    tcsetattr(0, TCSANOW, &new_settings);
+    nread = read(0,&ch,1);
+    new_settings.c_cc[VMIN]=1;
+    tcsetattr(0, TCSANOW, &new_settings);
+    if(nread == 1)
+    {
+        peek_character = ch;
+        return 1;
+    }
+    return 0;
+}
+
+int readch()
+{
+    char ch;
+
+    if(peek_character != -1)
+    {
+        ch = peek_character;
+        peek_character = -1;
+        return ch;
+    }
+    read(0,&ch,1);
+    return ch;
+}
 
 // ----------------------------------------------------------------------------------
 //   Setpoint Helper Functions
@@ -194,6 +246,8 @@ Autopilot_Interface(Serial_Port *serial_port_)
 
 	reading_status = 0;      // whether the read thread is running
 	writing_status = 0;      // whether the write thread is running
+	listening_status = 0;
+	receive_flag = 0;
 	control_status = 0;      // whether the autopilot is in offboard control mode
 	time_to_exit   = false;  // flag to signal thread exit
 
@@ -248,7 +302,8 @@ read_messages(FILE *fd)
 		// ----------------------------------------------------------------------
 		mavlink_message_t message;
 		success = serial_port->read_message(message);
-		printf("messageid = %d\n", message.msgid);
+		// printf("messageid = %d\n", message.msgid);
+		printf("flag = %d     ch = %d  \n",receive_flag,receive_ch);
 		// ----------------------------------------------------------------------
 		//   HANDLE MESSAGE
 		// ----------------------------------------------------------------------
@@ -304,6 +359,7 @@ read_messages(FILE *fd)
 				{
 					//printf("MAVLINK_MSG_ID_LOCAL_POSITION_NED\n");
 					mavlink_msg_local_position_ned_decode(&message, &(current_messages.local_position_ned));
+					//fprintf(fd,"x = %f y = %f z = %f \n",current_messages.local_position_ned.x,current_messages.local_position_ned.y,current_messages.local_position_ned.z);
 					current_messages.time_stamps.local_position_ned = get_time_usec();
 					this_timestamps.local_position_ned = current_messages.time_stamps.local_position_ned;
 					break;
@@ -345,7 +401,13 @@ read_messages(FILE *fd)
 					// fprintf(fd,"gyro: %f %f	%f ",current_messages.highres_imu.xgyro,current_messages.highres_imu.ygyro,current_messages.highres_imu.zgyro);
 					// fprintf(fd,"mag: %f %f %f ",current_messages.highres_imu.xmag,current_messages.highres_imu.ymag,current_messages.highres_imu.zmag);
 					// fprintf(fd,"alt: %f %f\n",current_messages.highres_imu.pressure_alt,current_messages.highres_imu.temperature);
-
+					if (receive_flag && receive_ch == 10) {
+						fprintf(fd,"acc: %f %f %f ",current_messages.highres_imu.xacc,current_messages.highres_imu.yacc,current_messages.highres_imu.zacc);
+						fprintf(fd,"gyro: %f %f	%f ",current_messages.highres_imu.xgyro,current_messages.highres_imu.ygyro,current_messages.highres_imu.zgyro);
+						fprintf(fd,"mag: %f %f %f ",current_messages.highres_imu.xmag,current_messages.highres_imu.ymag,current_messages.highres_imu.zmag);
+						fprintf(fd,"alt: %f %f\n",current_messages.highres_imu.pressure_alt,current_messages.highres_imu.temperature);
+						receive_flag = false;
+					}
 					current_messages.time_stamps.highres_imu = get_time_usec();
 					this_timestamps.highres_imu = current_messages.time_stamps.highres_imu;
 					break;
@@ -353,8 +415,13 @@ read_messages(FILE *fd)
 				case MAVLINK_MSG_ID_GPS_RAW_INT:
 				{
 					mavlink_msg_gps_raw_int_decode(&message, &(current_messages.gps_raw_int));
-					// fprintf(fd, "lat = %d	lon = %d	 alt = %d		", current_messages.gps_raw_int.lat,current_messages.gps_raw_int.lon,current_messages.gps_raw_int.alt);
-					// fprintf(fd, "vel = %d	cog = %d	 satellites_visible = %d\n", current_messages.gps_raw_int.vel,current_messages.gps_raw_int.cog,current_messages.gps_raw_int.satellites_visible);
+					fprintf(fd, "lat = %d	lon = %d	 alt = %d		", current_messages.gps_raw_int.lat,current_messages.gps_raw_int.lon,current_messages.gps_raw_int.alt);
+					fprintf(fd, "vel = %d	cog = %d	 satellites_visible = %d\n", current_messages.gps_raw_int.vel,current_messages.gps_raw_int.cog,current_messages.gps_raw_int.satellites_visible);
+					if (receive_flag && receive_ch == 10) {
+						fprintf(fd, "lat = %d	lon = %d	 alt = %d		", current_messages.gps_raw_int.lat,current_messages.gps_raw_int.lon,current_messages.gps_raw_int.alt);
+						fprintf(fd, "vel = %d	cog = %d	 satellites_visible = %d\n", current_messages.gps_raw_int.vel,current_messages.gps_raw_int.cog,current_messages.gps_raw_int.satellites_visible);
+						receive_flag = false;
+					}
 					break;
 				}
 
@@ -598,7 +665,6 @@ toggle_offboard_control( bool flag )
 
 	// Send the message
 	int len = serial_port->write_message(message);
-
 	// Done!
 	return len;
 }
@@ -622,8 +688,13 @@ start()
 		fprintf(stderr,"ERROR: serial port not open\n");
 		throw 1;
 	}
-
-
+	//--------------------
+	// 	LISTEN_KEYBOARD
+	//--------------------
+	printf("START LISTEN KEYBOARD THREAD \n");
+	result = pthread_create(&listen_tid,NULL,&start_autopilot_interface_listen_thread, this);
+	if (result) throw result;
+	printf("\n");
 	// --------------------------------------------------------------------------
 	//   READ THREAD
 	// --------------------------------------------------------------------------
@@ -796,14 +867,34 @@ start_write_thread(void)
 
 	else
 	{
-		// write_thread();
-		write_thread_global();
+		 write_thread();
+		// write_thread_global();
 		return;
 	}
 
 }
 
+// ------------------------------------------------------------------------------
+//   Listen Thread
+// ------------------------------------------------------------------------------
+void
+Autopilot_Interface::
+start_listen_thread(void)
+{
+	if ( not listening_status == false )
+	{
+		fprintf(stderr,"listen thread already running\n");
+		return;
+	}
 
+	else
+	{
+		// write_thread();
+		listen_thread();
+		return;
+	}
+
+}
 // ------------------------------------------------------------------------------
 //   Quit Handler
 // ------------------------------------------------------------------------------
@@ -844,7 +935,7 @@ read_thread()
 		read_messages(fd);
 		usleep(100000); // Read batches at 10Hz
 	}
-
+	printf("end####################\n");
 	reading_status = false;
 	fclose(fd);
 	return;
@@ -934,6 +1025,27 @@ write_thread_global(void)
 	return;
 
 }
+// ------------------------------------------------------------------------------
+//   Listen Thread
+// ------------------------------------------------------------------------------
+void
+Autopilot_Interface::
+listen_thread()
+{
+	listening_status = true;
+	init_keyboard();
+	while ( ! time_to_exit )
+	{
+		kbhit();
+		receive_ch = readch();
+		printf("\n%d\n", receive_ch);
+		receive_flag = true;
+	}
+
+	reading_status = false;
+	close_keyboard();
+	return;
+}
 
 // End Autopilot_Interface
 
@@ -963,6 +1075,19 @@ start_autopilot_interface_write_thread(void *args)
 
 	// run the object's read thread
 	autopilot_interface->start_write_thread();
+
+	// done!
+	return NULL;
+}
+
+void*
+start_autopilot_interface_listen_thread(void *args)
+{
+	// takes an autopilot object argument
+	Autopilot_Interface *autopilot_interface = (Autopilot_Interface *)args;
+
+	// run the object's read thread
+	autopilot_interface->start_listen_thread();
 
 	// done!
 	return NULL;
